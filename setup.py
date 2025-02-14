@@ -28,6 +28,7 @@ setup(
             'listener = py_pubsub.subscriber_member_function:main',
             'input = ur10_python_interface.input:main',
             'config = ur10_python_interface.config_example:main',
+            'mode_manager = ur10_python_interface.mode_manager:main',
         ],
     },
 )
