@@ -68,11 +68,16 @@ class ModeManager(Node):
         
         # service
         self.switch_controller_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
+        while not self.switch_controller_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/controller_manager/switch_controller service not available, waiting again...')
+        self.get_logger().info('/controller_manager/switch_controller service is available!')
         self.list_controller_client = self.create_client(ListControllers, '/controller_manager/list_controllers')
-
+        while not self.list_controller_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('/controller_manager/list_controllers service not available, waiting again...')
+        self.get_logger().info('/controller_manager/list_controllers service is available!')
         
         # mode loop
-        self.timer = self.create_timer(0.01, self.timer_callback)
+        self.timer = self.create_timer(0.001, self.timer_callback)
         
     def joystick_command_callback(self, msg):
         self.joystick_command = msg.data
@@ -94,71 +99,60 @@ class ModeManager(Node):
         if mode is not self.mode:
             print(f"{mode_dict[mode]} mode")
             if mode in [INIT, MOVEIT]:
-                #self.change_to_base_controller()
+                self.change_to_base_controller()
                 #if mode == INIT:  self.mgi.init_pose()
-                conlist = self.get_active_controllers()
-                print(conlist)
+                #conlist = self.get_active_controllers()
+                #print(conlist)
                 pass
             elif mode in [TELEOP, TASK_CONTROL, JOINT_CONTROL, IDLE, RSA]:
-                #self.change_to_velocity_controller()
-                conlist = self.get_active_controllers()
-                print(conlist)
+                self.change_to_velocity_controller()
+                #conlist = self.get_active_controllers()
+                #print(conlist)
                 pass
             self.mode = mode
             print(f"Current mode: {mode_dict[self.mode]}")
         
-        '''
-        my_param = self.get_parameter('my_parameter').get_parameter_value().string_value
-
-        self.get_logger().info('Hello %s!' % my_param)
-
-        my_new_param = rclpy.parameter.Parameter(
-            'my_parameter',
-            rclpy.Parameter.Type.STRING,
-            'world'
-        )
-        all_new_parameters = [my_new_param]
-        self.set_parameters(all_new_parameters)
-        '''
-
     def change_to_velocity_controller(self):
         print("change to ", self.velocity_controller)
-        res = self.controller_change(self.base_controller, self.velocity_controller)
+        res = self.switch_controller(self.base_controller, self.velocity_controller)
         return res
     
     def change_to_base_controller(self):
         print("change to ", self.base_controller)
-        res = self.controller_change(self.velocity_controller, self.base_controller)
+        res = self.switch_controller(self.velocity_controller, self.base_controller)
         return res
     
-    # def controller_change(self, current_controller, target_controller):
-    #     self.get_logger().info(f'Calling /controller_manager/switch_controller service')
+    def switch_controller(self, deactivate_controllers, activate_controllers, strictness=2):
+        """ 컨트롤러 변경 함수 """
+        if not self.switch_controller_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error('Service /controller_manager/switch_controller is not available!')
+            return False
 
-    #     if not self.client.wait_for_service(timeout_sec=5.0):  # 🔹 대기 시간 5초로 증가
-    #         self.get_logger().error('Service /controller_manager/switch_controller is not available!')
-    #         return False
+        req = SwitchController.Request()
+        req.activate_controllers = [activate_controllers]
+        req.deactivate_controllers = [deactivate_controllers]
+        req.strictness = strictness  # 2 = STRICT, 1 = BEST_EFFORT
 
-    #     req = SwitchController.Request()
-    #     req.activate_controllers = [target_controller]
-    #     req.deactivate_controllers = [current_controller]
-    #     req.strictness = SwitchController.Request.BEST_EFFORT
-    #     req.timeout = Duration(sec=2, nanosec=0)  # 🔹 Gazebo에서 2초 대기하도록 설정
+        # Duration 설정 (필수)
+        req.timeout = Duration()
+        req.timeout.sec = 2
+        req.timeout.nanosec = 0
 
-    #     # 🔹 비동기 호출 후 최대 10초까지 대기
-    #     future = self.client.call_async(req)
-    #     rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)  # 🔹 10초까지 대기
+        future = self.switch_controller_client.call_async(req)
+        print("future: ", future, future.done(), future.result())
+        return True
+        #rclpy.spin_until_future_complete(self, future)
 
-    #     if future.result() is not None:
-    #         res = future.result()
-    #         if res.ok:
-    #             self.get_logger().info(f'Controller changed from {current_controller} to {target_controller}')
-    #             return True
-    #         else:
-    #             self.get_logger().error('Failed to change controller')
-    #             return False
-    #     else:
-    #         self.get_logger().error('Service call failed or timed out!')
-    #         return False
+        # if future.done() and future.result() is not None:
+        #     if future.result().ok:
+        #         self.get_logger().info(f'Successfully switched controllers: Activated {activate_controllers}, Deactivated {deactivate_controllers}')
+        #         return True
+        #     else:
+        #         self.get_logger().error('Controller switch failed!')
+        #         return False
+        # else:
+        #     self.get_logger().error('Service call timed out or failed.')
+        #     return False
     
     def get_active_controllers(self):
         if not self.list_controller_client.wait_for_service(timeout_sec=5.0):
@@ -196,40 +190,6 @@ class ModeManager(Node):
         # else:
         #     self.get_logger().error('Failed to get controller list!')
         #     return []
-    
-    def controller_change(self, current_controller, target_controller):
-        self.get_logger().info(f'Calling /controller_manager/switch_controller service')
-
-        if not self.switch_controller_client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error('Service /controller_manager/switch_controller is not available!')
-            return False
-
-        req = SwitchController.Request()
-        req.activate_controllers = [target_controller]
-        req.deactivate_controllers = [current_controller]
-        req.strictness = SwitchController.Request.BEST_EFFORT
-        req.timeout = Duration(sec=2, nanosec=0)  # 요청 대기 시간 설정
-
-        future = self.switch_controller_client.call_async(req)
-
-        # 🔹 응답을 기다리지 않고 일정 시간 후 그냥 넘어감
-        timeout = 5.0  # 최대 대기 시간 (초)
-        elapsed_time = 0.0
-        while not future.done() and elapsed_time < timeout:
-            rclpy.spin_once(self, timeout_sec=0.5)
-            elapsed_time += 0.5
-
-        if future.done() and future.result() is not None:
-            res = future.result()
-            if res.ok:
-                self.get_logger().info(f'Controller changed from {current_controller} to {target_controller}')
-                return True
-            else:
-                self.get_logger().error('Failed to change controller')
-                return False
-        else:
-            self.get_logger().warn(f'No response received after {timeout} seconds, continuing execution...')
-            return True  # 🚀 응답이 없어도 다음 코드로 진행
 
 def main(args=None):
     rclpy.init(args=args)
