@@ -20,6 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'talker = ur10_python_interface.publisher_member_function:main',
+            'listener = py_pubsub.subscriber_member_function:main',
+            'input = ur10_python_interface.input:main',
         ],
     },
 )
