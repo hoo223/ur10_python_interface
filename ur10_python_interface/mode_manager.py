@@ -6,6 +6,8 @@ from math import *
 import argparse
 import yaml
 import os
+from pathlib import Path
+import time
 
 ## ros library
 import rclpy
@@ -15,6 +17,7 @@ from ament_index_python.packages import get_package_share_directory
 from std_msgs.msg import Float64MultiArray
 from controller_manager_msgs.srv import SwitchController, ListControllers
 from moveit.planning import MoveItPy
+from moveit_configs_utils import MoveItConfigsBuilder
 from builtin_interfaces.msg import Duration
 
 
@@ -42,9 +45,45 @@ def get_package_dir(package_name):
     package_dir = share_dir.replace('install', 'src').removesuffix(f'/share/{package_name}')
     return package_dir
 
+def plan_and_execute(
+    robot,
+    planning_component,
+    logger,
+    single_plan_parameters=None,
+    multi_plan_parameters=None,
+    sleep_time=0.0,
+):
+    """Helper function to plan and execute a motion."""
+    # plan to goal
+    logger.info("Planning trajectory")
+    if multi_plan_parameters is not None:
+        plan_result = planning_component.plan(
+            multi_plan_parameters=multi_plan_parameters
+        )
+    elif single_plan_parameters is not None:
+        plan_result = planning_component.plan(
+            single_plan_parameters=single_plan_parameters
+        )
+    else:
+        plan_result = planning_component.plan()
+
+    # execute the plan
+    if plan_result:
+        logger.info("Executing plan")
+        robot_trajectory = plan_result.trajectory
+        robot.execute(robot_trajectory, controllers=[])
+    else:
+        logger.error("Planning failed")
+
+    time.sleep(sleep_time)
+
 class ModeManager(Node):
-    def __init__(self, args):
+    def __init__(self, args, ur10):
         super().__init__('mode_manager')
+        self.ur10 = ur10
+        self.ur10_arm = ur10.get_planning_component("ur10_arm")
+        self.get_logger().info("MoveItPy instance created")
+        #print("MoveItPy instance created")
 
         # config 파일 로드
         config_path = os.path.join(get_package_dir("ur10_python_interface"), 'config', f"config_{args.env}.yaml")
@@ -68,13 +107,20 @@ class ModeManager(Node):
         
         # service
         self.switch_controller_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
-        while not self.switch_controller_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('/controller_manager/switch_controller service not available, waiting again...')
-        self.get_logger().info('/controller_manager/switch_controller service is available!')
         self.list_controller_client = self.create_client(ListControllers, '/controller_manager/list_controllers')
-        while not self.list_controller_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('/controller_manager/list_controllers service not available, waiting again...')
-        self.get_logger().info('/controller_manager/list_controllers service is available!')
+        # while not self.switch_controller_client.wait_for_service(timeout_sec=1.0):
+        #     self.get_logger().info('/controller_manager/switch_controller service not available, waiting again...')
+        # self.get_logger().info('/controller_manager/switch_controller service is available!')
+        # while not self.list_controller_client.wait_for_service(timeout_sec=1.0):
+        #     self.get_logger().info('/controller_manager/list_controllers service not available, waiting again...')
+        # self.get_logger().info('/controller_manager/list_controllers service is available!')
+        
+        # set plan start state using predefined state
+        self.ur10_arm.set_start_state(configuration_name="ready")
+        # set pose goal using predefined state
+        self.ur10_arm.set_goal_state(configuration_name="init")
+        # plan to goal
+        plan_and_execute(self.ur10, self.ur10_arm, self.get_logger(), sleep_time=3.0)
         
         # mode loop
         self.timer = self.create_timer(0.001, self.timer_callback)
@@ -198,7 +244,8 @@ def main(args=None):
     parser.add_argument("--env", type=str, default='gazebo', help="Path to config.yaml file")
     args, _ = parser.parse_known_args()  # 🔹 `parse_known_args()`를 사용하여 ROS2 인자 무시
     
-    mode_manager = ModeManager(args)
+    ur10 = MoveItPy(node_name="test")    
+    mode_manager = ModeManager(args, ur10)
     rclpy.spin(mode_manager)
 
     # Destroy the node explicitly
