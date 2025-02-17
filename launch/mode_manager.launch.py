@@ -15,12 +15,10 @@ from launch.actions import RegisterEventHandler
 def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder(robot_name="ur", package_name="ur10_moveit_config")
-        #.robot_description(file_path=ur_urdf_path)
-        #.robot_description_semantic(Path("") / "ur.srdf.xacro", {"name": ur_type})
-        #.robot_description_semantic(file_path='config/ur.srdf.xacro')
+        .trajectory_execution(file_path="config/moveit_controllers.yaml") # scaled_joint_trajectory_controller
         .moveit_cpp(
             file_path=get_package_share_directory("ur10_python_interface")
-            + "/config/motion_planning_python_api_tutorial.yaml"
+            + "/config/motion_planning_parameteres.yaml"
         )
         .to_moveit_configs()
     )    
@@ -33,12 +31,12 @@ def generate_launch_description():
         output="screen",
         parameters=[
             moveit_config.to_dict(),
-            {'use_sim_time': True},
+            {'use_sim_time': True}, # to match time stamp of "/joint_states" topic with gazebo
         ],
     )
 
     return LaunchDescription([
-        SetParameter(name='use_sim_time', value=True),
+        SetParameter(name='use_sim_time', value=True), # set "use_sim_time" to true for all instances in the launch file
         move_group_launch,
         mode_manager,
     ])
