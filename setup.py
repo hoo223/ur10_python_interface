@@ -24,11 +24,14 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'talker = ur10_python_interface.publisher_member_function:main',
-            'listener = py_pubsub.subscriber_member_function:main',
-            'input = ur10_python_interface.input:main',
-            'config = ur10_python_interface.config_example:main',
-            'mode_manager = ur10_python_interface.mode_manager:main',
+            'talker = example_script.publisher_member_function:main',
+            'listener = example_script.subscriber_member_function:main',
+            'service = example_script.service_member_function:main',
+            'client = example_script.client_member_function:main',
+            'config = example_script.config_example:main',
+            'list_con = example_script.list_controller_example:main',
+            'input = script.input:main',
+            'mode_manager = script.mode_manager:main',
         ],
     },
 )
